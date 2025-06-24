@@ -1,0 +1,19 @@
+{
+  "name": "model-generator",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "generate": "npx ts-node ./src/index.ts"
+  },
+  "private": true,
+  "devDependencies": {
+    "@types/inquirer": "^9.0.8",
+    "@types/node": "^24.0.3",
+    "prettier": "^3.6.0",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "commander": "^14.0.0",
+    "inquirer": "^12.6.3"
+  }
+}

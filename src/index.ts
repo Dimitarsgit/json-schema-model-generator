@@ -1,0 +1,211 @@
+import * as fs from 'fs';
+import * as path from 'path';
+import { Command } from 'commander';
+import inquirer from 'inquirer';
+import { FIELD_CLASSES, FIELD_TYPES, FORMAT_TO_FIELD } from './constants';
+import { JsonSchema } from './types';
+import { generateFieldAccessor, getFieldType, toPascalCase, hasType } from './utils';
+
+/**
+ * Generates a TypeScript model class from a JSON schema.
+ * Adds imports for nested models automatically.
+ *
+ * @param className - Name of the model class to generate.
+ * @param schema - JSON schema object.
+ * @returns Object containing the generated code string and any nested schemas found.
+ */
+function generateModel(
+  className: string,
+  schema: JsonSchema
+): { code: string; nestedSchemas: [string, JsonSchema][] } {
+  const dtoType = `${className}Dto`;
+  const objectSchema = schema.parameters || schema;
+  const nestedSchemas: [string, JsonSchema][] = [];
+  const lines: string[] = [`import { ${dtoType} } from 'api';`];
+
+  const usedSchemaEngineTypes = new Set<string>();
+  usedSchemaEngineTypes.add(FIELD_CLASSES.MODEL);
+
+  // Track nested models to import them at the top
+  const nestedModelImports = new Set<string>();
+
+  lines.push('');
+  lines.push(`export class ${className} extends ${FIELD_CLASSES.MODEL}<${dtoType}> {`);
+
+  if (!objectSchema.properties) {
+    lines.push(`}`);
+    const importLine = `import { ${[...usedSchemaEngineTypes].join(', ')} } from 'schema-engine';`;
+    lines.unshift(importLine);
+    return { code: lines.join('\n'), nestedSchemas };
+  }
+
+  for (const [propName, propSchema] of Object.entries(objectSchema.properties) as [
+    string,
+    JsonSchema,
+  ][]) {
+    const propType = propSchema.type;
+
+    const isString = hasType(propType, FIELD_TYPES.STRING);
+    const isBoolean = hasType(propType, FIELD_TYPES.BOOLEAN);
+    const isObject = hasType(propType, FIELD_TYPES.OBJECT);
+    const isArray = hasType(propType, FIELD_TYPES.ARRAY);
+    const isEnum = Boolean(propSchema?.enum);
+
+    let fieldClassType: string;
+
+    if (isString) {
+      fieldClassType = isEnum
+        ? FIELD_CLASSES.ENUM
+        : FORMAT_TO_FIELD[propSchema.format ?? ''] || FIELD_CLASSES.FIELD;
+
+      lines.push(
+        ...generateFieldAccessor(
+          propName,
+          getFieldType({
+            format: propSchema.format,
+            isString,
+            isEnum,
+            propName,
+            genericType: dtoType,
+          })
+        )
+      );
+    } else if (isBoolean) {
+      fieldClassType = FIELD_CLASSES.BOOLEAN;
+      lines.push(...generateFieldAccessor(propName, getFieldType({ isBoolean })));
+    } else if (isObject && propSchema.properties) {
+      fieldClassType = FIELD_CLASSES.FIELD;
+      const nestedClassName = toPascalCase(propName);
+      nestedSchemas.push([nestedClassName, propSchema]);
+      lines.push(...generateFieldAccessor(propName, nestedClassName, nestedClassName));
+      nestedModelImports.add(nestedClassName);
+    } else if (isArray && propSchema.items) {
+      fieldClassType = FIELD_CLASSES.ARRAY;
+      const itemSchema = propSchema.items;
+      const itemClassName = toPascalCase(propName);
+      nestedSchemas.push([itemClassName, itemSchema]);
+      lines.push(
+        ...generateFieldAccessor(
+          propName,
+          getFieldType({ isArray, genericType: itemClassName }),
+          itemClassName
+        )
+      );
+      nestedModelImports.add(itemClassName);
+    } else {
+      fieldClassType = FIELD_CLASSES.FIELD;
+      console.warn(
+        `Warning: Unknown or unsupported property type for "${propName}". Full schema:`,
+        JSON.stringify(propSchema, null, 2)
+      );
+      lines.push(...generateFieldAccessor(propName, getFieldType({})));
+    }
+
+    usedSchemaEngineTypes.add(fieldClassType);
+  }
+
+  lines.push(`}`);
+
+  // Add imports for nested models (relative imports)
+  for (const importName of nestedModelImports) {
+    lines.unshift(`import { ${importName} } from './${importName}';`);
+  }
+
+  const importLine = `import { ${[...usedSchemaEngineTypes].join(', ')} } from 'schema-engine';`;
+  lines.unshift(importLine);
+
+  return { code: lines.join('\n'), nestedSchemas };
+}
+
+/**
+ * Recursively generates model files from schemas.
+ *
+ * @param className - The current model class name.
+ * @param schema - JSON schema for the current model.
+ * @param outputDir - Directory to write generated files.
+ * @param generatedClasses - Set of already generated class names to avoid duplicates.
+ */
+function generateRecursively(
+  className: string,
+  schema: JsonSchema,
+  outputDir: string,
+  generatedClasses: Set<string>
+) {
+  if (generatedClasses.has(className)) return;
+  generatedClasses.add(className);
+
+  const { code, nestedSchemas } = generateModel(className, schema);
+
+  try {
+    const filePath = path.join(outputDir, `${className}.ts`);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, code, 'utf-8');
+    console.log(`Generated ${className}.ts`);
+  } catch (error) {
+    console.error(`Failed to write file for ${className}:`, error);
+  }
+
+  for (const [nestedName, nestedSchema] of nestedSchemas) {
+    generateRecursively(nestedName, nestedSchema, outputDir, generatedClasses);
+  }
+}
+
+/**
+ * Generates model classes from a map of schemas.
+ *
+ * @param schemaMap - Object with keys as class names and values as JSON schemas.
+ * @param outputDir - Directory to write generated model files.
+ */
+function generateFromSchemas(schemaMap: Record<string, JsonSchema>, outputDir: string) {
+  const generatedClasses = new Set<string>();
+
+  for (const [key, schema] of Object.entries(schemaMap)) {
+    generateRecursively(toPascalCase(key), schema, outputDir, generatedClasses);
+  }
+}
+
+/**
+ * Run the CLI program.
+ */
+async function runCli() {
+  const program = new Command();
+
+  program
+    .option('-i, --input <input>', 'Input schema JSON file path')
+    .option('-o, --output <output>', 'Output directory for generated models');
+
+  program.parse(process.argv);
+
+  let { input, output } = program.opts();
+
+  const answers = await inquirer.prompt([
+    {
+      type: 'input',
+      name: 'input',
+      message: 'Enter the input schema JSON file path:',
+      default: './src/schemas/schemaMap.json',
+    },
+    {
+      type: 'input',
+      name: 'output',
+      message: 'Enter the output directory for generated models:',
+      default: './src/models',
+    },
+  ]);
+
+  input = input || answers.input;
+  output = output || answers.output;
+
+  try {
+    const rawData = fs.readFileSync(input, 'utf-8');
+    const inputSchemas = JSON.parse(rawData);
+    generateFromSchemas(inputSchemas, output);
+  } catch (error) {
+    console.error('Error reading input file or generating models:', error);
+    process.exit(1);
+  }
+}
+
+if (require.main === module) {
+  runCli();
+}
