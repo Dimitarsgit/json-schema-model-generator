@@ -1,7 +1,5 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { Command } from 'commander';
-import inquirer from 'inquirer';
 import { FIELD_CLASSES, FIELD_TYPES, FORMAT_TO_FIELD } from './constants';
 import { JsonSchema } from './types';
 import { generateFieldAccessor, getFieldType, toPascalCase, hasType } from './utils';
@@ -12,7 +10,7 @@ import { generateFieldAccessor, getFieldType, toPascalCase, hasType } from './ut
  *
  * @param className - Name of the model class to generate.
  * @param schema - JSON schema object.
- * @returns Object containing the generated code string and any nested schemas found.
+ * @returns Object containing the generated code string and any nested sourceExamples found.
  */
 function generateModel(
   className: string,
@@ -46,6 +44,8 @@ function generateModel(
     const propType = propSchema.type;
 
     const isString = hasType(propType, FIELD_TYPES.STRING);
+    const isInteger = hasType(propType, FIELD_TYPES.INTEGER);
+    const isNumber = hasType(propType, FIELD_TYPES.NUMBER);
     const isBoolean = hasType(propType, FIELD_TYPES.BOOLEAN);
     const isObject = hasType(propType, FIELD_TYPES.OBJECT);
     const isArray = hasType(propType, FIELD_TYPES.ARRAY);
@@ -53,7 +53,7 @@ function generateModel(
 
     let fieldClassType: string;
 
-    if (isString) {
+    if (isString || isNumber || isInteger) {
       fieldClassType = isEnum
         ? FIELD_CLASSES.ENUM
         : FORMAT_TO_FIELD[propSchema.format ?? ''] || FIELD_CLASSES.FIELD;
@@ -118,7 +118,7 @@ function generateModel(
 }
 
 /**
- * Recursively generates model files from schemas.
+ * Recursively generates model files from sourceExamples.
  *
  * @param className - The current model class name.
  * @param schema - JSON schema for the current model.
@@ -151,61 +151,15 @@ function generateRecursively(
 }
 
 /**
- * Generates model classes from a map of schemas.
+ * Generates model classes from a map of sourceExamples.
  *
- * @param schemaMap - Object with keys as class names and values as JSON schemas.
+ * @param schemaMap - Object with keys as class names and values as JSON sourceExamples.
  * @param outputDir - Directory to write generated model files.
  */
-function generateFromSchemas(schemaMap: Record<string, JsonSchema>, outputDir: string) {
+export function generateFromSchemas(schemaMap: Record<string, JsonSchema>, outputDir: string) {
   const generatedClasses = new Set<string>();
 
   for (const [key, schema] of Object.entries(schemaMap)) {
     generateRecursively(toPascalCase(key), schema, outputDir, generatedClasses);
   }
-}
-
-/**
- * Run the CLI program.
- */
-async function runCli() {
-  const program = new Command();
-
-  program
-    .option('-i, --input <input>', 'Input schema JSON file path')
-    .option('-o, --output <output>', 'Output directory for generated models');
-
-  program.parse(process.argv);
-
-  let { input, output } = program.opts();
-
-  const answers = await inquirer.prompt([
-    {
-      type: 'input',
-      name: 'input',
-      message: 'Enter the input schema JSON file path:',
-      default: './src/schemas/schemaMap.json',
-    },
-    {
-      type: 'input',
-      name: 'output',
-      message: 'Enter the output directory for generated models:',
-      default: './src/models',
-    },
-  ]);
-
-  input = input || answers.input;
-  output = output || answers.output;
-
-  try {
-    const rawData = fs.readFileSync(input, 'utf-8');
-    const inputSchemas = JSON.parse(rawData);
-    generateFromSchemas(inputSchemas, output);
-  } catch (error) {
-    console.error('Error reading input file or generating models:', error);
-    process.exit(1);
-  }
-}
-
-if (require.main === module) {
-  runCli();
 }

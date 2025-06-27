@@ -3,10 +3,13 @@ export const FORMATS = {
   DATE: 'date',
   DATE_TIME: 'date-time',
   PERCENTAGE: 'percentage',
+  BASIS_POINTS: 'basis-points',
 } as const;
 
 export const FIELD_TYPES = {
   STRING: 'string',
+  INTEGER: 'integer',
+  NUMBER: 'number',
   BOOLEAN: 'boolean',
   OBJECT: 'object',
   ARRAY: 'array',

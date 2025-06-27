@@ -1,0 +1,32 @@
+{
+  "user": {
+    "properties": {
+      "id": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "name": {
+        "type": "string"
+      },
+      "roles": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": ["admin", "user", "guest"]
+        }
+      },
+      "settings": {
+        "type": "object",
+        "properties": {
+          "theme": {
+            "type": "string",
+            "enum": ["light", "dark"]
+          },
+          "notifications": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}

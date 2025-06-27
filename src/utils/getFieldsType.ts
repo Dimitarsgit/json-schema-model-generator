@@ -31,6 +31,7 @@ export const getFieldType: (options: Options) => string = ({
     [FORMATS.DATE]: 'DateField',
     [FORMATS.DATE_TIME]: 'DateTimeField',
     [FORMATS.PERCENTAGE]: 'PercentageField',
+    [FORMATS.BASIS_POINTS]: 'BasisPointsField',
   };
 
   if (isEnum && isString) {

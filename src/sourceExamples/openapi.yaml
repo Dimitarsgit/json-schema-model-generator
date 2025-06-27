@@ -1,0 +1,90 @@
+openapi: 3.1.0
+info:
+  title: Enhanced User API
+  description: API to retrieve a list of users with complex schema
+  version: 1.0.0
+
+servers:
+  - url: https://api.example.com/v1
+
+paths:
+  /users:
+    get:
+      summary: Get all users
+      operationId: getUsers
+      tags:
+        - Users
+      responses:
+        '200':
+          description: A list of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Jane Doe
+        email:
+          type: string
+          format: email
+          example: jane.doe@example.com
+        isActive:
+          type: boolean
+          example: true
+        role:
+          type: string
+          enum: [admin, user, guest]
+          example: user
+        tags:
+          type: array
+          items:
+            type: string
+          example: ['new', 'premium']
+        birthDate:
+          type: string
+          format: date
+          example: 1990-05-15
+        lastLogin:
+          type: string
+          format: date-time
+          example: 2025-06-26T14:35:00Z
+        accountBalance:
+          type: number
+          format: decimal
+          example: 1234.56
+      required:
+        - id
+        - name
+        - email
+        - isActive
+        - role
+        - birthDate
+        - accountBalance
+
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+        code:
+          type: integer
+      required:
+        - message
+        - code

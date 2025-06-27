@@ -1,19 +1,28 @@
 {
   "name": "model-generator",
   "version": "1.0.0",
-  "description": "",
+  "description": "CLI tool to generate models from OpenAPI YAML/JSON ",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "model-generator": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "generate": "npx ts-node ./src/index.ts"
+    "build": "tsc",
+    "prepare": "npm run build",
+    "generate": "npx ts-node ./src/cli.ts",
+    "prettify": "prettier --write ."
   },
   "private": true,
-  "devDependencies": {
-    "@types/inquirer": "^9.0.8",
+  "dependencies": {
     "@types/node": "^24.0.3",
     "prettier": "^3.6.0",
-    "typescript": "^5.8.3"
-  },
-  "dependencies": {
+    "typescript": "^5.8.3",
+    "@clack/prompts": "^0.11.0",
     "commander": "^14.0.0",
-    "inquirer": "^12.6.3"
+    "yaml": "^2.8.0"
   }
 }
