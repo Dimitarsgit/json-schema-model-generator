@@ -56,7 +56,6 @@ async function runCli() {
   try {
     // Load sourceExamples depending on file type
     const schemas = await loadOpenApiYamlSchemas(input);
-    console.table(schemas);
     // Generate TypeScript models
     generateFromSchemas(schemas, resolvedOutput);
 

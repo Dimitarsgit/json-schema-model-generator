@@ -4,126 +4,136 @@ import { FIELD_CLASSES, FIELD_TYPES, FORMAT_TO_FIELD } from './constants';
 import { OpenApiSchema } from './types';
 import { generateFieldAccessor, getFieldType, toPascalCase, hasType } from './utils';
 
-/**
- * Generates a TypeScript model class from a schema.
- * Adds imports for nested models automatically.
- *
- * @param className - Name of the model class to generate.
- * @param schema - Schema object.
- * @returns Object containing the generated code string and any nested sourceExamples found.
- */
-function generateModel(
+export const extractRefName = (ref: string): string => toPascalCase(ref.split('/').pop()!);
+
+export function generateModel(
   className: string,
   schema: OpenApiSchema
-): { code: string; nestedSchemas: [string, OpenApiSchema][] } {
+): {
+  code: string;
+  nestedSchemas: [string, OpenApiSchema][];
+} {
   const dtoType = `${className}WebDto`;
   const objectSchema = schema.parameters || schema;
-  const nestedSchemas: [string, OpenApiSchema][] = [];
-  const lines: string[] = [`import { ${dtoType} } from 'api';`];
 
-  const usedSchemaEngineTypes = new Set<string>();
-  usedSchemaEngineTypes.add(FIELD_CLASSES.MODEL);
-
+  const lines: string[] = [`import { ${dtoType} } from './api';`];
+  const usedFieldClasses = new Set<string>([FIELD_CLASSES.MODEL]);
   const nestedModelImports = new Set<string>();
+  const nestedSchemas: [string, OpenApiSchema][] = [];
 
   lines.push('');
   lines.push(`export class ${className} extends ${FIELD_CLASSES.MODEL}<${dtoType}> {`);
 
-  if (!objectSchema.properties) {
-    lines.push(`}`);
-    const importLine = `import { ${[...usedSchemaEngineTypes].join(', ')} } from 'schema-engine';`;
-    lines.unshift(importLine);
-    return { code: lines.join('\n'), nestedSchemas };
+  // ✅ Handle root-level enums (e.g. type: string + enum)
+  const isRootEnum =
+    objectSchema.type === 'string' && Array.isArray(objectSchema.enum) && !objectSchema.properties;
+
+  if (isRootEnum) {
+    const returnType = getFieldType({
+      isEnum: true,
+      isString: true,
+      propName: 'value',
+      genericType: dtoType,
+    });
+
+    usedFieldClasses.add(FIELD_CLASSES.ENUM);
+    lines.push(...generateFieldAccessor('value', returnType));
+    lines.push('}');
+
+    lines.unshift(`import { ${[...usedFieldClasses].join(', ')} } from '@gom/schema-engine-lib';`);
+    return {
+      code: lines.join('\n'),
+      nestedSchemas: [],
+    };
   }
 
-  for (const [propName, propSchema] of Object.entries(objectSchema.properties) as [
-    string,
-    OpenApiSchema,
-  ][]) {
-    const propType = propSchema.type;
+  const properties = objectSchema.properties ?? {};
+  for (const [propName, propSchema] of Object.entries(properties)) {
+    const type = propSchema.type;
+    const isString = hasType(type, FIELD_TYPES.STRING);
+    const isInteger = hasType(type, FIELD_TYPES.INTEGER);
+    const isNumber = hasType(type, FIELD_TYPES.NUMBER);
+    const isBoolean = hasType(type, FIELD_TYPES.BOOLEAN);
+    const isObject = hasType(type, FIELD_TYPES.OBJECT);
+    const isArray = hasType(type, FIELD_TYPES.ARRAY);
+    const isEnum = Array.isArray(propSchema.enum);
 
-    const isString = hasType(propType, FIELD_TYPES.STRING);
-    const isInteger = hasType(propType, FIELD_TYPES.INTEGER);
-    const isNumber = hasType(propType, FIELD_TYPES.NUMBER);
-    const isBoolean = hasType(propType, FIELD_TYPES.BOOLEAN);
-    const isObject = hasType(propType, FIELD_TYPES.OBJECT);
-    const isArray = hasType(propType, FIELD_TYPES.ARRAY);
-    const isEnum = Boolean(propSchema?.enum);
-
-    let fieldClassType: string;
-
-    if (isString || isNumber || isInteger) {
-      fieldClassType = isEnum
-        ? FIELD_CLASSES.ENUM
-        : FORMAT_TO_FIELD[propSchema.format ?? ''] || FIELD_CLASSES.FIELD;
-
-      lines.push(
-        ...generateFieldAccessor(
-          propName,
-          getFieldType({
-            format: propSchema.format,
-            isString,
-            isEnum,
-            propName,
-            genericType: dtoType,
-          })
-        )
-      );
-    } else if (isBoolean) {
-      fieldClassType = FIELD_CLASSES.BOOLEAN;
-      lines.push(...generateFieldAccessor(propName, getFieldType({ isBoolean })));
-    } else if (isObject && propSchema.properties) {
-      fieldClassType = FIELD_CLASSES.FIELD;
-      const nestedClassName = toPascalCase(propName);
-      nestedSchemas.push([nestedClassName, propSchema]);
-      lines.push(...generateFieldAccessor(propName, nestedClassName, nestedClassName));
-      nestedModelImports.add(nestedClassName);
-    } else if (isArray && propSchema.items) {
-      fieldClassType = FIELD_CLASSES.ARRAY;
-      const itemSchema = propSchema.items;
-      const itemClassName = toPascalCase(propName).slice(0, -1);
-      nestedSchemas.push([itemClassName, itemSchema]);
-      lines.push(
-        ...generateFieldAccessor(
-          propName,
-          getFieldType({ isArray, genericType: itemClassName }),
-          itemClassName
-        )
-      );
-      nestedModelImports.add(itemClassName);
-    } else {
-      fieldClassType = FIELD_CLASSES.FIELD;
-      console.warn(
-        `Warning: Unknown or unsupported property type for "${propName}". Full schema:`,
-        JSON.stringify(propSchema, null, 2)
-      );
-      lines.push(...generateFieldAccessor(propName, getFieldType({})));
+    // Add description as comment
+    if (propSchema.description) {
+      lines.push(`  // ${propSchema.description}`);
     }
 
-    usedSchemaEngineTypes.add(fieldClassType);
+    if (!isObject && !isArray) {
+      const returnType = getFieldType({
+        isString,
+        isBoolean,
+        isEnum,
+        format: propSchema.format,
+        genericType: dtoType,
+        propName,
+      });
+
+      if (isEnum && isString) {
+        usedFieldClasses.add(FIELD_CLASSES.ENUM);
+      } else if (isBoolean) {
+        usedFieldClasses.add(FIELD_CLASSES.BOOLEAN);
+      } else if (isString || isInteger || isNumber) {
+        usedFieldClasses.add(FORMAT_TO_FIELD[propSchema.format ?? ''] || FIELD_CLASSES.FIELD);
+      }
+
+      lines.push(...generateFieldAccessor(propName, returnType));
+    } else if (isObject && propSchema.properties) {
+      const nestedClassName = toPascalCase(propName);
+      usedFieldClasses.add(FIELD_CLASSES.MODEL);
+      nestedModelImports.add(nestedClassName);
+      nestedSchemas.push([nestedClassName, propSchema]);
+
+      lines.push(...generateFieldAccessor(propName, nestedClassName, nestedClassName));
+    } else if (isArray && propSchema.items) {
+      const itemSchema = propSchema.items;
+
+      let itemClass: string;
+      if ('$ref' in itemSchema && typeof itemSchema.$ref === 'string') {
+        itemClass = extractRefName(itemSchema.$ref);
+        nestedModelImports.add(itemClass);
+      } else if (itemSchema.type === 'object' && itemSchema.properties) {
+        itemClass = toPascalCase(propName.slice(0, -1));
+        nestedModelImports.add(itemClass);
+        nestedSchemas.push([itemClass, itemSchema]);
+      } else {
+        itemClass = 'unknown';
+      }
+
+      usedFieldClasses.add(FIELD_CLASSES.ARRAY);
+      const returnType = getFieldType({
+        isArray: true,
+        genericType: itemClass,
+      });
+
+      lines.push(...generateFieldAccessor(propName, returnType, itemClass));
+    } else {
+      usedFieldClasses.add(FIELD_CLASSES.FIELD);
+      console.warn(`Unsupported or unknown property "${propName}"`, propSchema);
+      lines.push(...generateFieldAccessor(propName, getFieldType({})));
+    }
   }
 
-  lines.push(`}`);
+  lines.push('}');
 
-  // Add imports for nested models (relative imports)
+  // Import nested models
   for (const importName of nestedModelImports) {
     lines.unshift(`import { ${importName} } from './${importName}';`);
   }
 
-  const importLine = `import { ${[...usedSchemaEngineTypes].join(', ')} } from 'schema-engine';`;
-  lines.unshift(importLine);
+  // Import schema-engine classes
+  lines.unshift(`import { ${[...usedFieldClasses].join(', ')} } from 'schema-engine';`);
 
-  return { code: lines.join('\n'), nestedSchemas };
+  return {
+    code: lines.join('\n'),
+    nestedSchemas,
+  };
 }
 
-/**
- * Recursively generates model files from sourceExamples.
- *
- * @param className - The current model class name.
- * @param schema - schema for the current model.
- * @param outputDir - Directory to write generated files.
- * @param generatedClasses - Set of already generated class names to avoid duplicates.
- */
 function generateRecursively(
   className: string,
   schema: OpenApiSchema,

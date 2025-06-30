@@ -20,4 +20,5 @@ export type OpenApiSchema = {
   items?: OpenApiSchema;
   additionalProperties?: boolean | OpenApiSchema;
   parameters?: OpenApiSchema;
+  $ref?: string;
 };

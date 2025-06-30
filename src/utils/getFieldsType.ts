@@ -10,13 +10,6 @@ type Options = {
   format?: string;
 };
 
-/**
- * Returns the appropriate field type string based on the provided options.
- *
- * @param options - Configuration options for determining the field type.
- * @returns A string representing the field type.
- * @throws Error if required options for certain field types are missing.
- */
 export const getFieldType: (options: Options) => string = ({
   isArray = false,
   isEnum = false,
