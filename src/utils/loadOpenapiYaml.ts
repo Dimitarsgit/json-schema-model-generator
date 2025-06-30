@@ -1,11 +1,13 @@
-import fs from 'fs';
-import yaml from 'yaml';
+import { parse } from 'yaml';
+import axios from 'axios';
 
-export const loadOpenApiYamlSchemas = (input: string) => {
-  // Load and parse OpenAPI 3.1.0 YAML file
-  const file = fs.readFileSync(input, 'utf8');
-  const openApiDoc = yaml.parse(file);
-
-  // Extract sourceExamples
-  return openApiDoc.components?.schemas ?? {};
-};
+export async function loadOpenApiYamlSchemas(url: string): Promise<any> {
+  try {
+    const response = await axios.get(url);
+    const openApiDoc = parse(response.data);
+    return openApiDoc.components?.schemas ?? {};
+  } catch (error) {
+    console.error(`Error loading YAML from: ${url}`, error);
+    throw error;
+  }
+}

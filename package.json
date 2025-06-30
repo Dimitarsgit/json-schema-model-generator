@@ -1,7 +1,7 @@
 {
   "name": "model-generator",
   "version": "1.0.0",
-  "description": "CLI tool to generate models from OpenAPI YAML/JSON ",
+  "description": "CLI tool to generate models",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
@@ -18,11 +18,12 @@
   },
   "private": true,
   "dependencies": {
+    "@clack/prompts": "^0.11.0",
     "@types/node": "^24.0.3",
+    "axios": "^1.10.0",
+    "commander": "^14.0.0",
     "prettier": "^3.6.0",
     "typescript": "^5.8.3",
-    "@clack/prompts": "^0.11.0",
-    "commander": "^14.0.0",
     "yaml": "^2.8.0"
   }
 }

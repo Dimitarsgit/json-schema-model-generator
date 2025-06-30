@@ -1,30 +1,29 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { FIELD_CLASSES, FIELD_TYPES, FORMAT_TO_FIELD } from './constants';
-import { JsonSchema } from './types';
+import { OpenApiSchema } from './types';
 import { generateFieldAccessor, getFieldType, toPascalCase, hasType } from './utils';
 
 /**
- * Generates a TypeScript model class from a JSON schema.
+ * Generates a TypeScript model class from a schema.
  * Adds imports for nested models automatically.
  *
  * @param className - Name of the model class to generate.
- * @param schema - JSON schema object.
+ * @param schema - Schema object.
  * @returns Object containing the generated code string and any nested sourceExamples found.
  */
 function generateModel(
   className: string,
-  schema: JsonSchema
-): { code: string; nestedSchemas: [string, JsonSchema][] } {
-  const dtoType = `${className}Dto`;
+  schema: OpenApiSchema
+): { code: string; nestedSchemas: [string, OpenApiSchema][] } {
+  const dtoType = `${className}WebDto`;
   const objectSchema = schema.parameters || schema;
-  const nestedSchemas: [string, JsonSchema][] = [];
+  const nestedSchemas: [string, OpenApiSchema][] = [];
   const lines: string[] = [`import { ${dtoType} } from 'api';`];
 
   const usedSchemaEngineTypes = new Set<string>();
   usedSchemaEngineTypes.add(FIELD_CLASSES.MODEL);
 
-  // Track nested models to import them at the top
   const nestedModelImports = new Set<string>();
 
   lines.push('');
@@ -39,7 +38,7 @@ function generateModel(
 
   for (const [propName, propSchema] of Object.entries(objectSchema.properties) as [
     string,
-    JsonSchema,
+    OpenApiSchema,
   ][]) {
     const propType = propSchema.type;
 
@@ -82,7 +81,7 @@ function generateModel(
     } else if (isArray && propSchema.items) {
       fieldClassType = FIELD_CLASSES.ARRAY;
       const itemSchema = propSchema.items;
-      const itemClassName = toPascalCase(propName);
+      const itemClassName = toPascalCase(propName).slice(0, -1);
       nestedSchemas.push([itemClassName, itemSchema]);
       lines.push(
         ...generateFieldAccessor(
@@ -121,13 +120,13 @@ function generateModel(
  * Recursively generates model files from sourceExamples.
  *
  * @param className - The current model class name.
- * @param schema - JSON schema for the current model.
+ * @param schema - schema for the current model.
  * @param outputDir - Directory to write generated files.
  * @param generatedClasses - Set of already generated class names to avoid duplicates.
  */
 function generateRecursively(
   className: string,
-  schema: JsonSchema,
+  schema: OpenApiSchema,
   outputDir: string,
   generatedClasses: Set<string>
 ) {
@@ -151,15 +150,15 @@ function generateRecursively(
 }
 
 /**
- * Generates model classes from a map of sourceExamples.
+ * Generates model classes.
  *
- * @param schemaMap - Object with keys as class names and values as JSON sourceExamples.
+ * @param schemas - Object with keys as class names and values representing class fields.
  * @param outputDir - Directory to write generated model files.
  */
-export function generateFromSchemas(schemaMap: Record<string, JsonSchema>, outputDir: string) {
+export function generateFromSchemas(schemas: Record<string, OpenApiSchema>, outputDir: string) {
   const generatedClasses = new Set<string>();
 
-  for (const [key, schema] of Object.entries(schemaMap)) {
+  for (const [key, schema] of Object.entries(schemas)) {
     generateRecursively(toPascalCase(key), schema, outputDir, generatedClasses);
   }
 }
